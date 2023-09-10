@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"os"
+	"os/signal"
 	"strconv"
 	"strings"
 )
@@ -54,6 +56,9 @@ func updateHandler(storage *MemStorage) http.HandlerFunc {
 			return
 		}
 
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		fmt.Fprintf(w, "Metric updated")
+
 		w.WriteHeader(http.StatusOK)
 	}
 }
@@ -65,6 +70,16 @@ func main() {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "Hello, World!")
 	})
+
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt)
+
+	go func() {
+		for sig := range c {
+			fmt.Printf("Caught signal %s: shutting down.\n", sig)
+			os.Exit(0)
+		}
+	}()
 
 	fmt.Println("Server running on http://localhost:8080")
 	http.ListenAndServe(":8080", nil)
