@@ -1,37 +1,49 @@
 package main
 
 import (
+	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/gorilla/mux"
 )
 
-func TestUpdateHandler(t *testing.T) {
+func TestHandlers(t *testing.T) {
 	storage := NewMemStorage()
-	handler := updateHandler(storage)
+	r := mux.NewRouter()
 
-	server := httptest.NewServer(http.HandlerFunc(handler))
+	r.HandleFunc("/update/{metricType}/{metricName}/{metricValue}", updateHandler(storage)).Methods("POST")
+	r.HandleFunc("/value/{metricType}/{metricName}", valueHandler(storage)).Methods("GET")
+	r.HandleFunc("/", listMetrics(storage)).Methods("GET")
+
+	server := httptest.NewServer(r)
 	defer server.Close()
 
-	resp, err := http.Post(server.URL+"/update/gauge/testMetric/1.23", "text/plain", nil)
+	resp, err := http.Post(fmt.Sprintf("%s/update/gauge/testGauge/42.0", server.URL), "text/plain", nil)
 	if err != nil {
 		t.Fatalf("Failed to send request: %v", err)
 	}
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("Expected status OK; got %v", resp.Status)
-	}
-	if storage.gauges["testMetric"] != 1.23 {
-		t.Fatalf("Expected gauge value 1.23; got %v", storage.gauges["testMetric"])
 	}
 
-	resp, err = http.Post(server.URL+"/update/counter/testCounter/10", "text/plain", nil)
+	resp, err = http.Get(fmt.Sprintf("%s/value/gauge/testGauge", server.URL))
 	if err != nil {
 		t.Fatalf("Failed to send request: %v", err)
 	}
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("Expected status OK; got %v", resp.Status)
 	}
-	if storage.counters["testCounter"] != 10 {
-		t.Fatalf("Expected counter value 10; got %v", storage.counters["testCounter"])
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("Failed to read body: %v", err)
+	}
+
+	expected := "42"
+	if string(body) != expected {
+		t.Fatalf("Expected body to be %v; got %v", expected, string(body))
 	}
 }

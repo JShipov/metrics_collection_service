@@ -6,7 +6,8 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
-	"strings"
+
+	"github.com/gorilla/mux"
 )
 
 type MemStorage struct {
@@ -23,16 +24,10 @@ func NewMemStorage() *MemStorage {
 
 func updateHandler(storage *MemStorage) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		parts := strings.Split(r.URL.Path, "/")
-
-		if len(parts) != 5 || parts[1] != "update" {
-			http.Error(w, "Invalid request path", http.StatusNotFound)
-			return
-		}
-
-		metricType := parts[2]
-		metricName := parts[3]
-		metricValue := parts[4]
+		vars := mux.Vars(r)
+		metricType := vars["metricType"]
+		metricName := vars["metricName"]
+		metricValue := vars["metricValue"]
 
 		switch metricType {
 		case "gauge":
@@ -42,7 +37,6 @@ func updateHandler(storage *MemStorage) http.HandlerFunc {
 				return
 			}
 			storage.gauges[metricName] = value
-
 		case "counter":
 			value, err := strconv.ParseInt(metricValue, 10, 64)
 			if err != nil {
@@ -50,26 +44,60 @@ func updateHandler(storage *MemStorage) http.HandlerFunc {
 				return
 			}
 			storage.counters[metricName] += value
-
 		default:
 			http.Error(w, "Invalid metric type", http.StatusBadRequest)
 			return
 		}
 
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		fmt.Fprintf(w, "Metric updated")
+		fmt.Fprint(w, "Metric updated")
+	}
+}
 
-		w.WriteHeader(http.StatusOK)
+func valueHandler(storage *MemStorage) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		metricType := vars["metricType"]
+		metricName := vars["metricName"]
+
+		switch metricType {
+		case "gauge":
+			if value, ok := storage.gauges[metricName]; ok {
+				fmt.Fprint(w, value)
+				return
+			}
+		case "counter":
+			if value, ok := storage.counters[metricName]; ok {
+				fmt.Fprint(w, value)
+				return
+			}
+		}
+
+		http.Error(w, "Metric not found", http.StatusNotFound)
+	}
+}
+
+func listMetrics(storage *MemStorage) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		fmt.Fprintf(w, "<h1>Metrics</h1>")
+		fmt.Fprintf(w, "<h2>Gauges</h2>")
+		for name, value := range storage.gauges {
+			fmt.Fprintf(w, "<div>%s: %f</div>", name, value)
+		}
+		fmt.Fprintf(w, "<h2>Counters</h2>")
+		for name, value := range storage.counters {
+			fmt.Fprintf(w, "<div>%s: %d</div>", name, value)
+		}
 	}
 }
 
 func main() {
+	r := mux.NewRouter()
 	storage := NewMemStorage()
 
-	http.HandleFunc("/update/", updateHandler(storage))
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "Hello, World!")
-	})
+	r.HandleFunc("/update/{metricType}/{metricName}/{metricValue}", updateHandler(storage)).Methods("POST")
+	r.HandleFunc("/value/{metricType}/{metricName}", valueHandler(storage)).Methods("GET")
+	r.HandleFunc("/", listMetrics(storage)).Methods("GET")
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
@@ -82,5 +110,5 @@ func main() {
 	}()
 
 	fmt.Println("Server running on http://localhost:8080")
-	http.ListenAndServe(":8080", nil)
+	http.ListenAndServe(":8080", r)
 }
