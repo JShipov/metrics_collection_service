@@ -95,7 +95,14 @@ func listMetrics(storage *MemStorage) http.HandlerFunc {
 var addr string
 
 func init() {
-	flag.StringVar(&addr, "a", "localhost:8080", "HTTP server address")
+	flag.StringVar(&addr, "a", getEnv("ADDRESS", "localhost:8080"), "HTTP server address")
+}
+
+func getEnv(key, defaultValue string) string {
+	if value, exists := os.LookupEnv(key); exists {
+		return value
+	}
+	return defaultValue
 }
 
 func main() {
