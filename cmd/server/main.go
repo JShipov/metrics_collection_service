@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"net/http"
 	"os"
@@ -91,7 +92,20 @@ func listMetrics(storage *MemStorage) http.HandlerFunc {
 	}
 }
 
+var addr string
+
+func init() {
+	flag.StringVar(&addr, "a", "localhost:8080", "HTTP server address")
+}
+
 func main() {
+	flag.Parse()
+
+	if len(flag.Args()) > 0 {
+		fmt.Println("Unknown arguments:", flag.Args())
+		os.Exit(1)
+	}
+
 	r := mux.NewRouter()
 	storage := NewMemStorage()
 
@@ -109,6 +123,6 @@ func main() {
 		}
 	}()
 
-	fmt.Println("Server running on http://localhost:8080")
-	http.ListenAndServe(":8080", r)
+	fmt.Printf("Server running on http://%s\n", addr)
+	http.ListenAndServe(addr, r)
 }
